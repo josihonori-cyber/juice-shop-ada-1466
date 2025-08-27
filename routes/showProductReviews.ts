@@ -28,12 +28,37 @@ global.sleep = (time: number) => {
 export function showProductReviews () {
   return (req: Request, res: Response, next: NextFunction) => {
     // Truncate id to avoid unintentional RCE
-    const id = !utils.isChallengeEnabled(challenges.noSqlCommandChallenge) ? Number(req.params.id) : utils.trunc(req.params.id, 40)
+    const isNoSqlChallenge = utils.isChallengeEnabled(challenges.noSqlCommandChallenge)
+    // Validate id: allow only numbers when not in noSqlCommandChallenge,
+    // and in challenge mode, restrict to safe characters and length
+    let id: any
+    if (!isNoSqlChallenge) {
+      id = Number(req.params.id)
+      if (isNaN(id)) {
+        res.status(400).json({ error: 'Invalid Product ID' })
+        return
+      }
+    } else {
+      // For challenge, truncate, but also allow only digits
+      id = utils.trunc(req.params.id, 40)
+      if (!/^\d+$/.test(id)) {
+        res.status(400).json({ error: 'Invalid Product ID for challenge' })
+        return
+      }
+    }
 
     // Measure how long the query takes, to check if there was a nosql dos attack
     const t0 = new Date().getTime()
 
-    db.reviewsCollection.find({ $where: 'this.product == ' + id }).then((reviews: Review[]) => {
+    // Use $where only for challenge, else use direct query
+    let query
+    if (isNoSqlChallenge) {
+      query = { $where: 'this.product == ' + id }
+    } else {
+      query = { product: id }
+    }
+
+    db.reviewsCollection.find(query).then((reviews: Review[]) => {
       const t1 = new Date().getTime()
       challengeUtils.solveIf(challenges.noSqlCommandChallenge, () => { return (t1 - t0) > 2000 })
       const user = security.authenticatedUsers.from(req)
