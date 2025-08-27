@@ -45,6 +45,12 @@ export function showProductReviews () {
         res.status(400).json({ error: 'Invalid Product ID for challenge' })
         return
       }
+      // Ensure id is parsed as an integer for $where injection safety
+      id = parseInt(id, 10)
+      if (isNaN(id)) {
+        res.status(400).json({ error: 'Product ID conversion error' })
+        return
+      }
     }
 
     // Measure how long the query takes, to check if there was a nosql dos attack
